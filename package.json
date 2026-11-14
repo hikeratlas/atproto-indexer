@@ -1,0 +1,28 @@
+{
+  "name": "@hikeratlas/atproto-indexer",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev --test-scheduled",
+    "deploy": "wrangler deploy",
+    "migrate:local": "wrangler d1 migrations apply indexer --local",
+    "migrate:remote": "wrangler d1 migrations apply indexer --remote",
+    "lexicons": "node scripts/lexicons.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atproto/lexicon": "^0.7.19",
+    "@hikeratlas/route-keys": "https://github.com/hikeratlas/route-keys/releases/download/v0.1.0/hikeratlas-route-keys-0.1.0.tgz"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-plugin": "^1.8.2",
+    "@cloudflare/workers-types": "^5.20261114.1",
+    "eslint": "^9.39.5",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.72.2",
+    "vitest": "^4.1.12",
+    "wrangler": "^4.162.0"
+  }
+}

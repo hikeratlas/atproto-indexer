@@ -1,0 +1,23 @@
+# Hiker Atlas's AT Protocol indexer: a Worker with a D1 database.
+name = "hikeratlas-indexer"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+# The website calls https://indexer.hikeratlas.com (website app/atproto/indexer.ts).
+# A custom domain also turns on the Cache API the queries use.
+routes = [{ pattern = "indexer.hikeratlas.com", custom_domain = true }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "indexer"
+database_id = "26bfa648-2203-4a52-a96f-7b872f93ca8b"
+migrations_dir = "migrations"
+
+[triggers]
+# Every minute: drain Jetstream from the saved cursor (#3).
+# Every 5 minutes: a slice of the reconcile with each PDS, when one is due (#4).
+crons = ["* * * * *", "*/5 * * * *"]
+
+[observability]
+enabled = true
