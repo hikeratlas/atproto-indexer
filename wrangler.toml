@@ -6,6 +6,10 @@ main = "src/index.ts"
 compatibility_date = "2026-11-01"
 compatibility_flags = ["nodejs_compat"]
 
+# The website calls https://indexer.hikeratlas.com (website app/atproto/indexer.ts).
+# A custom domain also turns on the Cache API the queries use.
+routes = [{ pattern = "indexer.hikeratlas.com", custom_domain = true }]
+
 [[d1_databases]]
 binding = "DB"
 database_name = "indexer"

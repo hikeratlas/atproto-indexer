@@ -58,7 +58,8 @@ then the Worker. Once, by the maintainer:
 2. Optionally, `npx wrangler secret put ADMIN_TOKEN`, for the admin
    endpoints (below). Without it, they're off.
 3. Add the repository secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit,
-   D1: Edit) and `CLOUDFLARE_ACCOUNT_ID`. Until they're set, the deploy
+   D1: Edit, and Workers Routes: Edit on the hikeratlas.com zone, for the
+   custom domain `indexer.hikeratlas.com`) and `CLOUDFLARE_ACCOUNT_ID`. Until they're set, the deploy
    workflow does nothing.
 
 ## Admin
