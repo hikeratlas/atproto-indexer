@@ -92,6 +92,7 @@ export interface StrongRef { uri: string; cid: string }
 
 `;
 const collections = [];
+const queries = [];
 for (const d of docs) {
   for (const [name, def] of Object.entries(d.defs)) {
     if (def.type === 'record') {
@@ -99,10 +100,16 @@ for (const d of docs) {
       out += `// ${d.id} (record key: ${def.key})\nexport interface ${typeName(d.id, name)} ${objectType(def.record, d.id)}\n\n`;
     } else if (def.type === 'object') {
       out += `export interface ${typeName(d.id, name)} ${objectType(def, d.id)}\n\n`;
+    } else if (def.type === 'query') {
+      const t = typeName(d.id, name);
+      queries.push([t, d.id]);
+      out += `// ${d.id} (query)\nexport interface ${t}Params ${objectType(def.parameters ?? {}, d.id)}\n`;
+      out += `export interface ${t}Output ${objectType(def.output.schema, d.id)}\n\n`;
     }
   }
 }
 out += `// Record collections.\nexport const NSID = {\n${collections.map(([t, id]) => `  ${t}: ${JSON.stringify(id)},`).join('\n')}\n} as const;\n\n`;
+out += `// Queries.\nexport const QUERY = {\n${queries.map(([t, id]) => `  ${t}: ${JSON.stringify(id)},`).join('\n')}\n} as const;\n\n`;
 out += `export const LEXICONS = ${JSON.stringify(docs, null, 2)} as unknown as LexiconDoc[];\n`;
 fs.writeFileSync(path.join(root, 'src', 'lexicons.ts'), out);
 console.log(`${docs.length} lexicons at ${fs.readFileSync(refFile, 'utf8').trim()} -> src/lexicons.ts`);

@@ -139,3 +139,17 @@ describe('/admin/reconcile', () => {
     expect(await getState(env.DB, RECONCILE_REQUESTED)).not.toBeNull();
   });
 });
+
+describe('new accounts between passes', () => {
+  it('get their PDS and handle at the next slice', async () => {
+    await env.DB.prepare('INSERT INTO state (key, value) VALUES (?1, ?2)').bind(LAST, JSON.stringify({ started: NOW.toISOString() })).run();
+    await ingest(env.DB, [fave(ALICE, KEY), fave(BOB, KEY)]);
+    const { f } = network([], { [ALICE]: { handle: 'alice.example.com', records: { [NSID.Fave]: [{ rkey: KEY, cid: CID1, value: { createdAt: at } }] } } });
+    expect(await reconcileSlice(env.DB, f, NOW)).toMatchObject({ started: false, repos: 2 });
+    expect(await actors()).toMatchObject([
+      { did: ALICE, handle: 'alice.example.com', pds: PDS, has_profile: 1 },
+      { did: BOB, pds: '' }, // unresolvable: not retried until the daily pass
+    ]);
+    expect(await reconcileSlice(env.DB, f, NOW)).toMatchObject({ repos: 0 });
+  });
+});

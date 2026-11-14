@@ -152,6 +152,15 @@ export async function reconcileRepo(db: D1Database, f: Fetch, did: string): Prom
   return { events, fetched, actor };
 }
 
+// Reconciles one repo: applies its events, then its PDS and handle (after
+// ingest, which creates the actor's row if it's new).
+async function syncRepo(db: D1Database, f: Fetch, did: string): Promise<{ events: number; fetched: number }> {
+  const { events, fetched, actor } = await reconcileRepo(db, f, did);
+  await ingest(db, events);
+  if (actor) await db.prepare('UPDATE actors SET pds = ?1, handle = ?2 WHERE did = ?3').bind(actor.pds, actor.handle, did).run();
+  return { events: events.length, fetched };
+}
+
 // Starts a pass: the relay's users plus every account already indexed.
 async function start(db: D1Database, f: Fetch, now: Date): Promise<string[]> {
   const listed = await listUsers(f);
@@ -177,7 +186,7 @@ export async function reconcileSlice(db: D1Database, f: Fetch, now = new Date())
     const requested = await getState(db, RECONCILE_REQUESTED);
     const last = await getState(db, LAST);
     const lastStarted = last ? Date.parse((JSON.parse(last) as Pass).started) : 0;
-    if (!requested && now.getTime() - lastStarted < EVERY_MS) return res;
+    if (!requested && now.getTime() - lastStarted < EVERY_MS) return newAccounts(db, f, res);
     queue = await start(db, f, now);
     res.started = true;
   }
@@ -188,12 +197,9 @@ export async function reconcileSlice(db: D1Database, f: Fetch, now = new Date())
     const did = queue.shift()!;
     res.repos++;
     try {
-      const { events, fetched, actor } = await reconcileRepo(db, f, did);
+      const { events, fetched } = await syncRepo(db, f, did);
       records += fetched;
-      await ingest(db, events);
-      // After ingest, which creates the actor's row if it's new.
-      if (actor) await db.prepare('UPDATE actors SET pds = ?1, handle = ?2 WHERE did = ?3').bind(actor.pds, actor.handle, did).run();
-      res.events += events.length;
+      res.events += events;
     } catch (err) {
       if (pass.errors.length < 50) pass.errors.push(err instanceof Error ? err.message : String(err));
     }
@@ -209,6 +215,22 @@ export async function reconcileSlice(db: D1Database, f: Fetch, now = new Date())
       db.prepare('DELETE FROM state WHERE key IN (?1, ?2)').bind(QUEUE, STARTED),
       setState(db, LAST, JSON.stringify({ ...pass, finished: now.toISOString() })),
     ]);
+  }
+  return res;
+}
+
+// Between passes: accounts seen on Jetstream but not yet reconciled (no PDS
+// known), so their handle and PDS follow within minutes.
+async function newAccounts(db: D1Database, f: Fetch, res: SliceResult): Promise<SliceResult> {
+  const { results } = await db.prepare('SELECT did FROM actors WHERE pds IS NULL LIMIT ?1').bind(REPOS_PER_SLICE).all<{ did: string }>();
+  for (const { did } of results) {
+    res.repos++;
+    try {
+      res.events += (await syncRepo(db, f, did)).events;
+    } catch {
+      // Not again until the daily pass: an empty PDS marks it tried.
+      await db.prepare("UPDATE actors SET pds = '' WHERE did = ?1 AND pds IS NULL").bind(did).run();
+    }
   }
   return res;
 }
