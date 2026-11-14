@@ -5,6 +5,7 @@ import { XrpcError, xrpc } from './api';
 import type { Env } from './env';
 import { CURSOR, connectWebSocket, recordRun, runJetstream } from './jetstream';
 import { LEXICON_REF } from './lexicons';
+import { hide, listHidden, unhide, validSubject } from './moderation';
 import { reconcileSlice, requestReconcile } from './reconcile';
 import { setState } from './state';
 
@@ -63,7 +64,17 @@ function sameToken(a: string, b: string): boolean {
 async function admin(req: Request, url: URL, env: Env): Promise<Response> {
   const token = req.headers.get('authorization')?.replace(/^Bearer /, '') ?? '';
   if (!env.ADMIN_TOKEN || !sameToken(token, env.ADMIN_TOKEN)) return json({ error: 'NotFound', message: 'No such endpoint' }, 404);
+  if (url.pathname === '/admin/hidden' && req.method === 'GET') return json({ hidden: await listHidden(env.DB) });
   if (req.method !== 'POST') return json({ error: 'InvalidRequest', message: 'POST' }, 405);
+  if (url.pathname === '/admin/hide' || url.pathname === '/admin/unhide') {
+    const body = await req.json<{ subject?: string; reason?: string }>().catch(() => ({} as { subject?: string; reason?: string }));
+    const subject = body.subject?.trim() ?? '';
+    if (!validSubject(subject)) return json({ error: 'InvalidRequest', message: 'subject must be an at:// URI or a DID' }, 400);
+    if (url.pathname === '/admin/unhide') return json({ subject, unhidden: await unhide(env.DB, subject) });
+    if (!body.reason?.trim()) return json({ error: 'InvalidRequest', message: 'reason is required' }, 400);
+    await hide(env.DB, subject, body.reason.trim());
+    return json({ subject, hidden: true });
+  }
   if (url.pathname === '/admin/reconcile') {
     // ?wipe=1 empties the index first, to rebuild it from the network.
     const wipe = url.searchParams.get('wipe') === '1';
