@@ -20,7 +20,9 @@ A Cloudflare Worker with a D1 database, designed to fit the Workers Free plan:
   plan's 10 ms of CPU; a run that's behind catches up over a few minutes.
 - **Daily**, and whenever the cursor is too old for Jetstream to replay, it
   reconciles with each user's own PDS, found through the relay's
-  `listReposByCollection` for `com.hikeratlas.temp.actor.profile` (#4).
+  `listReposByCollection` for `com.hikeratlas.temp.actor.profile`, plus every
+  account already indexed (#4). It works a few repos at a time, from a cron
+  every 5 minutes, fetching only what changed (by CID).
 - **On request** it answers XRPC queries, such as
   `com.hikeratlas.temp.getRouteStats`, defined in atproto-lexicon (#5).
 
@@ -53,6 +55,17 @@ Merging to main deploys (`.github/workflows/deploy.yml`): D1 migrations,
 then the Worker. Once, by the maintainer:
 
 1. `npx wrangler d1 create indexer`, and put its id in `wrangler.toml`.
-2. Add the repository secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit,
+2. Optionally, `npx wrangler secret put ADMIN_TOKEN`, for the admin
+   endpoints (below). Without it, they're off.
+3. Add the repository secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit,
    D1: Edit) and `CLOUDFLARE_ACCOUNT_ID`. Until they're set, the deploy
    workflow does nothing.
+
+## Admin
+
+With `ADMIN_TOKEN` set, as a bearer token:
+
+    POST /admin/reconcile          # reconcile with every PDS now
+    POST /admin/reconcile?wipe=1   # empty the index, then rebuild it from the network
+
+`GET /health` (public) reports the lag behind Jetstream and the last runs.

@@ -14,7 +14,8 @@ migrations_dir = "migrations"
 
 [triggers]
 # Every minute: drain Jetstream from the saved cursor (#3).
-crons = ["* * * * *"]
+# Every 5 minutes: a slice of the reconcile with each PDS, when one is due (#4).
+crons = ["* * * * *", "*/5 * * * *"]
 
 [observability]
 enabled = true
