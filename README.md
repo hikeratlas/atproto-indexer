@@ -24,7 +24,10 @@ A Cloudflare Worker with a D1 database, designed to fit the Workers Free plan:
   account already indexed (#4). It works a few repos at a time, from a cron
   every 5 minutes, fetching only what changed (by CID).
 - **On request** it answers XRPC queries, such as
-  `com.hikeratlas.temp.getRouteStats`, defined in atproto-lexicon (#5).
+  `com.hikeratlas.temp.getRouteStats`, defined in atproto-lexicon (#5), for
+  Hiker Atlas's own site: CORS allows only https://www.hikeratlas.com (and
+  localhost, for development). The lexicons are public, so anyone can run
+  their own indexer.
 
 Faves count only from accounts with a Hiker Atlas profile record. Reported
 content is hidden from the index (#6; reports go to
@@ -54,7 +57,7 @@ content is hidden from the index (#6; reports go to
 Merging to main deploys (`.github/workflows/deploy.yml`): D1 migrations,
 then the Worker. Once, by the maintainer:
 
-1. `npx wrangler d1 create indexer`, and put its id in `wrangler.toml`.
+1. The D1 database (`indexer`) exists, and its id is in `wrangler.toml`.
 2. Optionally, `npx wrangler secret put ADMIN_TOKEN`, for the admin
    endpoints (below). Without it, they're off.
 3. Add the repository secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit,

@@ -1,6 +1,4 @@
 # Hiker Atlas's AT Protocol indexer: a Worker with a D1 database.
-# The database id is filled in once the database exists:
-#   npx wrangler d1 create indexer
 name = "hikeratlas-indexer"
 main = "src/index.ts"
 compatibility_date = "2026-11-01"
@@ -13,7 +11,7 @@ routes = [{ pattern = "indexer.hikeratlas.com", custom_domain = true }]
 [[d1_databases]]
 binding = "DB"
 database_name = "indexer"
-database_id = "00000000-0000-0000-0000-000000000000"
+database_id = "26bfa648-2203-4a52-a96f-7b872f93ca8b"
 migrations_dir = "migrations"
 
 [triggers]

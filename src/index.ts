@@ -15,25 +15,42 @@ export const RECONCILE_CRON = '*/5 * * * *';
 const json = (body: unknown, status = 200, headers: Record<string, string> = {}) =>
   new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json', ...headers } });
 
-// The data is public, and the lexicons are published for any app: any
-// origin may call the API.
-const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, OPTIONS', 'access-control-max-age': '86400' };
+// Only Hiker Atlas's own site may call the API from a browser (anyone is
+// free to run their own indexer), plus local development.
+const ORIGINS = new Set(['https://www.hikeratlas.com']);
+const LOCAL = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
+function cors(req: Request): Record<string, string> {
+  const origin = req.headers.get('origin');
+  if (!origin || !(ORIGINS.has(origin) || LOCAL.test(origin))) return { vary: 'Origin' };
+  return { 'access-control-allow-origin': origin, 'access-control-allow-methods': 'GET, OPTIONS', 'access-control-max-age': '86400', vary: 'Origin' };
+}
+
+// Adds the request's CORS headers to a response (cached ones are stored
+// without, so one origin's headers never reach another).
+function withCors(resp: Response, req: Request): Response {
+  const out = new Response(resp.body, resp);
+  for (const [k, v] of Object.entries(cors(req))) out.headers.set(k, v);
+  return out;
+}
 
 async function query(req: Request, url: URL, env: Env, ctx: ExecutionContext): Promise<Response> {
-  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...CORS, 'access-control-allow-headers': '*' } });
-  if (req.method !== 'GET') return json({ error: 'InvalidRequest', message: 'GET' }, 405, CORS);
-  // The Cache API (on a custom domain) saves D1 reads for popular pages.
+  if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'access-control-allow-headers': '*' } });
+  if (req.method !== 'GET') return json({ error: 'InvalidRequest', message: 'GET' }, 405, cors(req));
+  // The Cache API (on a custom domain) saves D1 reads for popular pages. It's
+  // keyed by URL alone, so entries carry no CORS headers.
   const cache = caches.default;
-  const hit = await cache.match(req);
-  if (hit) return hit;
+  const cacheKey = new Request(url.toString(), { method: 'GET' });
+  const hit = await cache.match(cacheKey);
+  if (hit) return withCors(hit, req);
   try {
     const r = await xrpc(env.DB, url.pathname.slice('/xrpc/'.length), url);
-    if (!r) return json({ error: 'MethodNotImplemented', message: 'No such query' }, 501, CORS);
-    const resp = json(r.body, 200, { ...CORS, 'cache-control': `public, max-age=${r.maxAge}` });
-    ctx.waitUntil(cache.put(req, resp.clone()));
-    return resp;
+    if (!r) return json({ error: 'MethodNotImplemented', message: 'No such query' }, 501, cors(req));
+    const resp = json(r.body, 200, { 'cache-control': `public, max-age=${r.maxAge}` });
+    ctx.waitUntil(cache.put(cacheKey, resp.clone()));
+    return withCors(resp, req);
   } catch (err) {
-    if (err instanceof XrpcError) return json({ error: err.error, message: err.message }, err.status, CORS);
+    if (err instanceof XrpcError) return json({ error: err.error, message: err.message }, err.status, cors(req));
     throw err;
   }
 }

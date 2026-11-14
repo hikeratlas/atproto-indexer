@@ -72,13 +72,15 @@ describe('getRouteReviews', () => {
 });
 
 describe('/xrpc', () => {
-  const get = (path: string, init?: RequestInit) => exports.default.fetch(`https://indexer.test/xrpc/${path}`, init);
+  const SITE = 'https://www.hikeratlas.com';
+  const get = (path: string, init: RequestInit = {}, origin = SITE) =>
+    exports.default.fetch(`https://indexer.test/xrpc/${path}`, { ...init, headers: { origin, ...(init.headers ?? {}) } });
 
   it('answers getRouteStats, with CORS and caching', async () => {
     await seed();
     const r = await get(`com.hikeratlas.temp.getRouteStats?keys=${KEY}&keys=${KEY2}`);
     expect(r.status).toBe(200);
-    expect(r.headers.get('access-control-allow-origin')).toBe('*');
+    expect(r.headers.get('access-control-allow-origin')).toBe(SITE);
     expect(r.headers.get('cache-control')).toBe('public, max-age=60');
     expect((await r.json<{ routes: { faves: number }[] }>()).routes.map((x) => x.faves)).toEqual([2, 1]);
   });
@@ -103,6 +105,15 @@ describe('/xrpc', () => {
     expect((await get('com.example.nope')).status).toBe(501);
     const pre = await get('com.hikeratlas.temp.getRouteStats', { method: 'OPTIONS' });
     expect(pre.status).toBe(204);
-    expect(pre.headers.get('access-control-allow-origin')).toBe('*');
+    expect(pre.headers.get('access-control-allow-origin')).toBe(SITE);
+  });
+
+  it('allows only Hiker Atlas and local development', async () => {
+    const q = `com.hikeratlas.temp.getRouteStats?keys=${KEY}`;
+    expect((await get(q, {}, 'http://localhost:5173')).headers.get('access-control-allow-origin')).toBe('http://localhost:5173');
+    for (const origin of ['https://evil.example.com', 'https://www.hikeratlas.com.evil.example.com', 'http://www.hikeratlas.com']) {
+      expect((await get(q, {}, origin)).headers.get('access-control-allow-origin'), origin).toBeNull();
+      expect((await get(q, { method: 'OPTIONS' }, origin)).headers.get('access-control-allow-origin'), origin).toBeNull();
+    }
   });
 });
