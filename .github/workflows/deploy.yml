@@ -2,7 +2,8 @@ name: Deploy
 
 # Deploys main to Cloudflare: D1 migrations first, then the Worker.
 # Needs the repository secrets CLOUDFLARE_API_TOKEN (Workers Scripts: Edit,
-# D1: Edit) and CLOUDFLARE_ACCOUNT_ID; until they're set, it does nothing.
+# D1: Edit, Workers Routes: Edit on hikeratlas.com) and CLOUDFLARE_ACCOUNT_ID;
+# until they're set, it does nothing.
 
 on:
   push:
