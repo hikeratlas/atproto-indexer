@@ -1,0 +1,20 @@
+# Hiker Atlas's AT Protocol indexer: a Worker with a D1 database.
+# The database id is filled in once the database exists:
+#   npx wrangler d1 create indexer
+name = "hikeratlas-indexer"
+main = "src/index.ts"
+compatibility_date = "2026-11-01"
+compatibility_flags = ["nodejs_compat"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "indexer"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[triggers]
+# Every minute: drain Jetstream from the saved cursor (#3).
+crons = ["* * * * *"]
+
+[observability]
+enabled = true
