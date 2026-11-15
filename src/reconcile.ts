@@ -36,7 +36,7 @@ interface Pass {
   errors: string[];
 }
 
-async function getJson<T>(f: Fetch, url: string): Promise<{ ok: true; body: T } | { ok: false; status: number; error?: string }> {
+export async function getJson<T>(f: Fetch, url: string): Promise<{ ok: true; body: T } | { ok: false; status: number; error?: string }> {
   const r = await f(url, { headers: { accept: 'application/json', 'user-agent': 'hikeratlas-indexer' } });
   if (r.ok) return { ok: true, body: (await r.json()) as T };
   let error: string | undefined;
@@ -73,7 +73,7 @@ export async function resolveDid(f: Fetch, did: string): Promise<{ pds: string; 
 }
 
 // The handle only if it resolves back to the DID: a DID document can claim any.
-async function verifiedHandle(f: Fetch, did: string, handle: string | null): Promise<string | null> {
+export async function verifiedHandle(f: Fetch, did: string, handle: string | null): Promise<string | null> {
   if (!handle) return null;
   const r = await getJson<{ did: string }>(f, `${HANDLE_RESOLVER}/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(handle)}`);
   return r.ok && r.body.did === did ? handle : null;

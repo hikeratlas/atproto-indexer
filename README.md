@@ -29,6 +29,12 @@ A Cloudflare Worker with a D1 database, designed to fit the Workers Free plan:
   localhost, for development). The lexicons are public, so anyone can run
   their own indexer.
 
+- **Right after a write**, the website calls `POST /notify {uri}` with the
+  record's `at://` URI, and the indexer fetches that record from its
+  author's PDS and applies it (or removes it, if it's gone) before replying,
+  so people see their own posts at once (#15). It trusts only the PDS, and
+  is rate-limited per account.
+
 Faves count only from accounts with a Hiker Atlas profile record. Reported
 content is hidden from the index (#6; reports go to
 [hikeratlas/feedback](https://github.com/hikeratlas/feedback)).

@@ -6,6 +6,7 @@ import type { Env } from './env';
 import { CURSOR, connectWebSocket, recordRun, runJetstream } from './jetstream';
 import { LEXICON_REF } from './lexicons';
 import { hide, listHidden, unhide, validSubject } from './moderation';
+import { notify } from './notify';
 import { reconcileSlice, requestReconcile } from './reconcile';
 import { setState } from './state';
 
@@ -106,6 +107,13 @@ export default {
     const url = new URL(req.url);
     if (url.pathname.startsWith('/xrpc/')) return query(req, url, env, ctx);
     if (url.pathname === '/health') return health(env);
+    if (url.pathname === '/notify') {
+      if (req.method === 'OPTIONS') return new Response(null, { status: 204, headers: { ...cors(req), 'access-control-allow-methods': 'POST, OPTIONS', 'access-control-allow-headers': 'content-type' } });
+      if (req.method !== 'POST') return json({ error: 'InvalidRequest', message: 'POST' }, 405, cors(req));
+      const body = await req.json<{ uri?: unknown }>().catch(() => ({} as { uri?: unknown }));
+      const r = await notify(env.DB, fetch, body.uri);
+      return json(r.body, r.status, cors(req));
+    }
     if (url.pathname.startsWith('/admin/')) return admin(req, url, env);
     return json({ error: 'NotFound', message: 'No such endpoint' }, 404);
   },
