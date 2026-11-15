@@ -60,22 +60,49 @@ export function subscribeUrl(host: string, cursor: number | null): string {
   return u.toString();
 }
 
-// Account and identity events come for every account on the network; only
-// those for accounts we know (or that appear in the same batch) are kept,
-// without touching D1 for the rest.
-async function relevant(db: D1Database, events: IndexEvent[]): Promise<IndexEvent[]> {
-  const asked = [...new Set(events.filter((e) => e.kind !== 'commit').map((e) => e.did))];
-  if (!asked.length) return events;
-  const { results } = await db.prepare('SELECT did FROM actors WHERE did IN (SELECT value FROM json_each(?1))')
-    .bind(JSON.stringify(asked)).all<{ did: string }>();
-  const known = new Set(results.map((r) => r.did));
-  const out: IndexEvent[] = [];
-  for (const e of events) {
-    if (e.kind === 'commit') known.add(e.did);
-    else if (!known.has(e.did)) continue;
-    out.push(e);
+// Account and identity events come for every account on the network
+// (Jetstream sends them whatever the filter: ~1 every 2 s), so most are for
+// accounts we've never seen. Looking each one up costs D1 row reads even
+// when it misses, so a run loads the accounts it knows once (one row read
+// each) and filters in memory. Past KNOWN_MAX accounts that would cost more
+// than the lookups, so it looks up just the batch's DIDs instead.
+export const KNOWN_MAX = 2000;
+
+export class KnownAccounts {
+  private all: Set<string> | null = null;
+  private loaded = false;
+
+  constructor(private db: D1Database) {}
+
+  // The DIDs among these that are indexed.
+  private async lookup(dids: string[]): Promise<Set<string>> {
+    if (!this.loaded) {
+      this.loaded = true;
+      const { results } = await this.db.prepare('SELECT did FROM actors LIMIT ?1').bind(KNOWN_MAX + 1).all<{ did: string }>();
+      if (results.length <= KNOWN_MAX) this.all = new Set(results.map((r) => r.did));
+    }
+    if (this.all) return new Set(dids.filter((d) => this.all!.has(d)));
+    const { results } = await this.db.prepare('SELECT did FROM actors WHERE did IN (SELECT value FROM json_each(?1))')
+      .bind(JSON.stringify(dids)).all<{ did: string }>();
+    return new Set(results.map((r) => r.did));
   }
-  return out;
+
+  // The events worth applying: commits, and account and identity events for
+  // accounts we know (or that appear earlier in the same batch).
+  async relevant(events: IndexEvent[]): Promise<IndexEvent[]> {
+    const asked = [...new Set(events.filter((e) => e.kind !== 'commit').map((e) => e.did))];
+    if (!asked.length) return events;
+    const known = await this.lookup(asked);
+    const out: IndexEvent[] = [];
+    for (const e of events) {
+      if (e.kind === 'commit') {
+        known.add(e.did);
+        this.all?.add(e.did);
+      } else if (!known.has(e.did)) continue;
+      out.push(e);
+    }
+    return out;
+  }
 }
 
 function parse(text: string): IndexEvent | null {
@@ -112,11 +139,12 @@ export async function runJetstream(db: D1Database, connect: Connect, nowMs = Dat
   }
   if (!stream) return result;
 
+  const accounts = new KnownAccounts(db);
   let batch: IndexEvent[] = [];
   let last: number | null = null; // the last event's time_us
   const flush = async () => {
     if (!batch.length && last === null) return;
-    const s = await ingest(db, await relevant(db, batch));
+    const s = await ingest(db, await accounts.relevant(batch));
     result.stats.applied += s.applied;
     for (const [k, v] of Object.entries(s.skipped)) result.stats.skipped[k] = (result.stats.skipped[k] ?? 0) + v;
     batch = [];

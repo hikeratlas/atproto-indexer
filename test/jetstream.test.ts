@@ -109,3 +109,22 @@ describe('runJetstream', () => {
     expect(r.stats).toEqual({ applied: 1, skipped: { unreadable: 2 } });
   });
 });
+
+describe('KnownAccounts', () => {
+  it('reads the known accounts once a run, not once per event', async () => {
+    await env.DB.prepare("INSERT INTO actors (did, seen_at) VALUES (?1, '')").bind(ALICE).run();
+    const msgs = Array.from({ length: 250 }, (_, i) => identity(US(500_000 - i * 1000), `did:plc:${String(i).padStart(24, 'x')}`, 'x.example.com'));
+    msgs.push(identity(US(1000), ALICE, 'alice.example.com'));
+    let reads = 0;
+    const db = new Proxy(env.DB, {
+      get(t, k) {
+        if (k !== 'prepare') return Reflect.get(t, k).bind?.(t) ?? Reflect.get(t, k);
+        return (q: string) => { if (/FROM actors/.test(q) && !/^UPDATE/.test(q)) reads++; return t.prepare(q); };
+      },
+    });
+    const r = await runJetstream(db, fake(msgs).connect, NOW_MS);
+    expect(r.events).toBe(251);
+    expect(reads).toBe(1); // three batches, one load
+    expect((await env.DB.prepare('SELECT handle FROM actors').first<{ handle: string }>())!.handle).toBe('alice.example.com');
+  });
+});
