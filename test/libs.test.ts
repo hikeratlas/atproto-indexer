@@ -20,4 +20,18 @@ describe('libraries in workerd', () => {
     expect(() => lex.assertValidRecord(NSID.Review, review)).not.toThrow();
     expect(() => lex.assertValidRecord(NSID.Review, { $type: NSID.Review, createdAt: 'x' })).toThrow();
   });
+
+  // A review's track is a com.atproto.repo.strongRef: atproto's lexicon, not
+  // ours, so it's added beside the vendored ones (scripts/lexicons.mjs).
+  // Without it, every review with a track was skipped as invalid.
+  it('validates a review that points at its track', () => {
+    const lex = new Lexicons(LEXICONS);
+    const review = {
+      $type: NSID.Review, text: 'test text', createdAt: '2026-11-15T00:04:05.034Z', hikedAt: '2026-11-14T17:00:00.000Z',
+      routeKey: '1KrSPQSApLDHBFBAAGAKC.GuZQw-vOTsE', license: 'CC0-1.0',
+      track: { uri: 'at://did:plc:w5l6zvlmyz3r2cl36bfqlq7a/com.hikeratlas.temp.track/3n2cpn4ppee2q', cid: 'bafyreiaz7z4wez3m3bnr2d3ygarymayweilhbacyofljt3xstw2zevhuqm' },
+    };
+    expect(() => lex.assertValidRecord(NSID.Review, jsonToLex(review))).not.toThrow();
+    expect(() => lex.assertValidRecord(NSID.Review, jsonToLex({ ...review, track: { uri: 'not a uri', cid: 'x' } }))).toThrow();
+  });
 });

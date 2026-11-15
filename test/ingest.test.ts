@@ -37,6 +37,14 @@ describe('ingest', () => {
     expect(JSON.parse(records[1].json as string)).toMatchObject({ text: 'Lovely' });
   });
 
+  it('stores a review that points at its track', async () => {
+    const track = { uri: `at://${ALICE}/${NSID.Track}/3lbtrk`, cid: CID };
+    const stats = await ingest(env.DB, [review(ALICE, '3lbxyz', { track })], NOW);
+    expect(stats).toEqual({ applied: 1, skipped: {} });
+    const { records } = await dump();
+    expect(JSON.parse(records[0].json as string).track).toEqual(track);
+  });
+
   it('gives the same database when events are applied twice', async () => {
     const events = [profile(ALICE), fave(ALICE), review(ALICE, '3lbxyz'), commit(ALICE, NSID.Review, '3lbxyz', {}, 'delete'), fave(BOB)];
     await ingest(env.DB, events, NOW);

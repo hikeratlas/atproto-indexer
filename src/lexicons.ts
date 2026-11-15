@@ -745,5 +745,29 @@ export const LEXICONS = [
         }
       }
     }
+  },
+  {
+    "lexicon": 1,
+    "id": "com.atproto.repo.strongRef",
+    "description": "A URI with a content-hash fingerprint.",
+    "defs": {
+      "main": {
+        "type": "object",
+        "required": [
+          "uri",
+          "cid"
+        ],
+        "properties": {
+          "uri": {
+            "type": "string",
+            "format": "at-uri"
+          },
+          "cid": {
+            "type": "string",
+            "format": "cid"
+          }
+        }
+      }
+    }
   }
 ] as unknown as LexiconDoc[];

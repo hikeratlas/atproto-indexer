@@ -44,6 +44,44 @@ const files = [];
 const docs = files.map((f) => JSON.parse(fs.readFileSync(f, 'utf8')));
 const byId = new Map(docs.map((d) => [d.id, d]));
 
+// atproto's own lexicons that ours refer to. They aren't in
+// hikeratlas/atproto-lexicon, but validation needs them: without
+// com.atproto.repo.strongRef, every review with a track failed
+// assertValidRecord ("Lexicon not found") and was skipped. Copied from
+// bluesky-social/atproto's lexicons/com/atproto/repo/strongRef.json.
+const STANDARD = [
+  {
+    lexicon: 1,
+    id: 'com.atproto.repo.strongRef',
+    description: 'A URI with a content-hash fingerprint.',
+    defs: {
+      main: {
+        type: 'object',
+        required: ['uri', 'cid'],
+        properties: {
+          uri: { type: 'string', format: 'at-uri' },
+          cid: { type: 'string', format: 'cid' },
+        },
+      },
+    },
+  },
+];
+const known = new Map([...STANDARD, ...docs].map((d) => [d.id, d]));
+
+// Every ref must resolve, here or in STANDARD: a missing one makes each
+// record that uses it fail validation, quietly (it's skipped as invalid).
+function refs(v, id) {
+  if (Array.isArray(v)) return v.forEach((x) => refs(x, id));
+  if (!v || typeof v !== 'object') return;
+  for (const r of v.type === 'ref' ? [v.ref] : v.type === 'union' ? v.refs : []) {
+    const [nsid, name] = r.split('#');
+    const target = known.get(nsid || id);
+    if (!target?.defs[name || 'main']) throw new Error(`${id}: ${r} isn't defined (add it to STANDARD if it's atproto's)`);
+  }
+  for (const x of Object.values(v)) refs(x, id);
+}
+for (const d of docs) refs(d.defs, d.id);
+
 // A def's TypeScript name: com.hikeratlas.temp.review -> Review,
 // com.hikeratlas.temp.defs#photo -> Photo, ...actor.profile#units -> ProfileUnits.
 const pascal = (s) => s.charAt(0).toUpperCase() + s.slice(1);
@@ -110,6 +148,6 @@ for (const d of docs) {
 }
 out += `// Record collections.\nexport const NSID = {\n${collections.map(([t, id]) => `  ${t}: ${JSON.stringify(id)},`).join('\n')}\n} as const;\n\n`;
 out += `// Queries.\nexport const QUERY = {\n${queries.map(([t, id]) => `  ${t}: ${JSON.stringify(id)},`).join('\n')}\n} as const;\n\n`;
-out += `export const LEXICONS = ${JSON.stringify(docs, null, 2)} as unknown as LexiconDoc[];\n`;
+out += `export const LEXICONS = ${JSON.stringify([...docs, ...STANDARD], null, 2)} as unknown as LexiconDoc[];\n`;
 fs.writeFileSync(path.join(root, 'src', 'lexicons.ts'), out);
 console.log(`${docs.length} lexicons at ${fs.readFileSync(refFile, 'utf8').trim()} -> src/lexicons.ts`);
