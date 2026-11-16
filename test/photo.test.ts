@@ -45,10 +45,11 @@ function pds(type = 'image/jpeg', status = 200, made: { type: string; status: nu
 const url = (q: string) => new URL(`https://indexer.example.com/xrpc/${GET_PHOTO}?${q}`);
 
 describe('getPhoto (website#177)', () => {
-  // R2 isn't reset between tests.
+  // R2 (Miniflare's, local) isn't reset between tests. Delete only the test
+  // photo's thumbnail, never the whole bucket, in case the binding is ever
+  // pointed at the real one.
   beforeEach(async () => {
-    const { objects } = await env.PHOTOS.list();
-    if (objects.length) await env.PHOTOS.delete(objects.map((o) => o.key));
+    await env.PHOTOS.delete(thumbKey(PHOTO));
   });
 
   it('finds only photos of visible records', async () => {
