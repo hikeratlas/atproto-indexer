@@ -29,6 +29,21 @@ A Cloudflare Worker with a D1 database, designed to fit the Workers Free plan:
   localhost, for development). The lexicons are public, so anyone can run
   their own indexer.
 
+- **Photos** (`com.hikeratlas.temp.getPhoto?did=…&cid=…&size=thumbnail|fullsize`,
+  website#177): a track's or review's photo as an image, for the website and
+  the Android app (`<img>` and image loaders need no CORS). Only photos of
+  indexed, visible records: a hidden one stops being served within the hour
+  (the cache time).
+  - `fullsize`: the blob from the author's PDS, as uploaded.
+  - `thumbnail` (at most 640 px a side, WebP): made once by Cloudflare's image
+    transformations (Images → Transformations, enabled on the hikeratlas.com
+    zone) and kept in the private R2 bucket `hikeratlas-photo-thumbs` by the
+    blob's CID, so the Free plan's 5,000 transformations a month count new
+    photos, not views. The bucket is read only after the visibility check.
+    If a thumbnail can't be made (past the month's allowance, or
+    transformations off), the photo as uploaded is served, cached for 5
+    minutes, and tried again after.
+
 - **Right after a write**, the website calls `POST /notify {uri}` with the
   record's `at://` URI, and the indexer fetches that record from its
   author's PDS and applies it (or removes it, if it's gone) before replying,
@@ -63,11 +78,13 @@ content is hidden from the index (#6; reports go to
 Merging to main deploys (`.github/workflows/deploy.yml`): D1 migrations,
 then the Worker. Once, by the maintainer:
 
-1. The D1 database (`indexer`) exists, and its id is in `wrangler.toml`.
+1. The D1 database (`indexer`) exists, and its id is in `wrangler.toml`;
+   so does the R2 bucket `hikeratlas-photo-thumbs` (private: no public
+   access, no custom domain).
 2. Optionally, `npx wrangler secret put ADMIN_TOKEN`, for the admin
    endpoints (below). Without it, they're off.
 3. Add the repository secrets `CLOUDFLARE_API_TOKEN` (Workers Scripts: Edit,
-   D1: Edit, and Workers Routes: Edit on the hikeratlas.com zone, for the
+   D1: Edit, Workers R2 Storage: Edit, and Workers Routes: Edit on the hikeratlas.com zone, for the
    custom domain `indexer.hikeratlas.com`) and `CLOUDFLARE_ACCOUNT_ID`. Until they're set, the deploy
    workflow does nothing.
 

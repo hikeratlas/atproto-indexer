@@ -7,6 +7,7 @@ import { CURSOR, connectWebSocket, recordRun, runJetstream } from './jetstream';
 import { LEXICON_REF } from './lexicons';
 import { hide, listHidden, unhide, validSubject } from './moderation';
 import { notify } from './notify';
+import { GET_PHOTO, PhotoError, getPhoto } from './photo';
 import { reconcileSlice, requestReconcile } from './reconcile';
 import { setState } from './state';
 
@@ -44,8 +45,20 @@ async function query(req: Request, url: URL, env: Env, ctx: ExecutionContext): P
   const cacheKey = new Request(url.toString(), { method: 'GET' });
   const hit = await cache.match(cacheKey);
   if (hit) return withCors(hit, req);
+  const nsid = url.pathname.slice('/xrpc/'.length);
+  if (nsid === GET_PHOTO) {
+    // An image, not JSON (website#177); an error is JSON, as for the others.
+    try {
+      const resp = await getPhoto(env.DB, env.PHOTOS, fetch, url);
+      ctx.waitUntil(cache.put(cacheKey, resp.clone()));
+      return withCors(resp, req);
+    } catch (err) {
+      if (err instanceof PhotoError) return json({ error: err.error, message: err.message }, err.status, cors(req));
+      throw err;
+    }
+  }
   try {
-    const r = await xrpc(env.DB, url.pathname.slice('/xrpc/'.length), url);
+    const r = await xrpc(env.DB, nsid, url);
     if (!r) return json({ error: 'MethodNotImplemented', message: 'No such query' }, 501, cors(req));
     const resp = json(r.body, 200, { 'cache-control': `public, max-age=${r.maxAge}` });
     ctx.waitUntil(cache.put(cacheKey, resp.clone()));

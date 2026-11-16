@@ -14,6 +14,13 @@ database_name = "indexer"
 database_id = "26bfa648-2203-4a52-a96f-7b872f93ca8b"
 migrations_dir = "migrations"
 
+# Photo thumbnails, each made once by Cloudflare's image transformations and
+# kept by its blob's CID (getPhoto, website#177). Private: never served but
+# through getPhoto, which checks the photo is still visible.
+[[r2_buckets]]
+binding = "PHOTOS"
+bucket_name = "hikeratlas-photo-thumbs"
+
 [triggers]
 # Every minute: drain Jetstream from the saved cursor (#3).
 # Every 5 minutes: a slice of the reconcile with each PDS, when one is due (#4).
