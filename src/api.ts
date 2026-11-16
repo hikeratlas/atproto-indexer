@@ -15,7 +15,7 @@ export class XrpcError extends Error {
 }
 
 // Rows shown: from active accounts, and neither they nor the record hidden.
-const VISIBLE = `a.status = 'active'
+export const VISIBLE = `a.status = 'active'
   AND NOT EXISTS (SELECT 1 FROM hidden h WHERE h.subject = r.uri OR h.subject = r.did)`;
 const RECENT_DAYS = 30;
 

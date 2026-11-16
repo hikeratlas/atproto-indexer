@@ -29,6 +29,15 @@ A Cloudflare Worker with a D1 database, designed to fit the Workers Free plan:
   localhost, for development). The lexicons are public, so anyone can run
   their own indexer.
 
+- **Photos** (`com.hikeratlas.temp.getPhoto?did=…&cid=…&size=thumbnail|fullsize`,
+  website#177): a track's or review's photo as an image, for the website and
+  the Android app (`<img>` and image loaders need no CORS). It fetches the
+  blob from the author's PDS and caches it for an hour; a thumbnail (at most
+  640 px a side, WebP) is made by Cloudflare's image transformations, which
+  must be enabled on the hikeratlas.com zone (Images → Transformations).
+  Only photos of indexed, visible records: a hidden one stops being served
+  within the hour.
+
 - **Right after a write**, the website calls `POST /notify {uri}` with the
   record's `at://` URI, and the indexer fetches that record from its
   author's PDS and applies it (or removes it, if it's gone) before replying,
