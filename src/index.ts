@@ -49,7 +49,7 @@ async function query(req: Request, url: URL, env: Env, ctx: ExecutionContext): P
   if (nsid === GET_PHOTO) {
     // An image, not JSON (website#177); an error is JSON, as for the others.
     try {
-      const resp = await getPhoto(env.DB, fetch, url);
+      const resp = await getPhoto(env.DB, env.PHOTOS, fetch, url);
       ctx.waitUntil(cache.put(cacheKey, resp.clone()));
       return withCors(resp, req);
     } catch (err) {

@@ -8,9 +8,16 @@
 // Only photos of records the indexer has and shows (VISIBLE: an active
 // account, neither it nor the record hidden), so it's no open image proxy, and
 // a photo hidden after a report stops being served once the cache lets go of it
-// (CACHE_SECONDS). The thumbnail is made by Cloudflare's image transformations
-// (cf.image), which must be enabled on the zone; the photo as uploaded is
-// passed through.
+// (CACHE_SECONDS). The photo as uploaded is passed through.
+//
+// A thumbnail is made by Cloudflare's image transformations (cf.image, enabled
+// on the zone) the first time it's asked for, and kept in R2 (PHOTOS, private)
+// by its blob's CID: a CID's bytes never change, so each photo is transformed
+// once, not once a month (the Free plan counts 5,000 unique transformations a
+// calendar month). R2 is read only after the visibility check. If a thumbnail
+// can't be made (past the month's allowance, error 9422, or transformations
+// off), the photo as uploaded is served instead, cached briefly so it's tried
+// again.
 import { VISIBLE } from './api';
 import { NSID } from './lexicons';
 import { resolveDid } from './reconcile';
@@ -58,11 +65,36 @@ export async function findPhoto(db: D1Database, did: string, cid: string): Promi
   return row ? row.pds : undefined;
 }
 
-// The image, from the PDS: the thumbnail made by cf.image, or the blob.
-export async function getPhoto(db: D1Database, f: Fetch, url: URL): Promise<Response> {
+// R2 key of a photo's thumbnail: by its size, so a different size is new
+// objects, not a mix.
+export const thumbKey = (cid: string) => `thumbnail/${THUMB_SIDE}/${cid}.webp`;
+// How long a stand-in (the photo as uploaded, when no thumbnail could be
+// made) is kept: soon tried again.
+export const FALLBACK_SECONDS = 300;
+
+const headers = (type: string, maxAge: number, source: string) => ({
+  'content-type': type,
+  'cache-control': `public, max-age=${maxAge}`,
+  'x-content-type-options': 'nosniff',
+  'content-security-policy': "default-src 'none'; sandbox",
+  // Where it came from, for debugging: r2, transformed, or original.
+  'x-photo-source': source,
+});
+
+const IMAGE = /^image\/(jpeg|png|webp|avif|gif)\b/;
+
+// The image: a thumbnail (from R2, or made and kept there), or the photo as
+// uploaded, from the PDS.
+export async function getPhoto(db: D1Database, photos: R2Bucket, f: Fetch, url: URL): Promise<Response> {
   const { did, cid, size } = photoParams(url);
   let pds = await findPhoto(db, did, cid);
   if (pds === undefined) throw new PhotoError(404, 'NotFound', 'No such photo');
+
+  if (size === 'thumbnail') {
+    const kept = await photos.get(thumbKey(cid));
+    if (kept) return new Response(kept.body, { headers: headers('image/webp', CACHE_SECONDS, 'r2') });
+  }
+
   if (!pds) {
     pds = (await resolveDid(f, did))?.pds ?? null;
     if (!pds) throw new PhotoError(502, 'UpstreamFailure', "Can't resolve the account's PDS");
@@ -70,21 +102,32 @@ export async function getPhoto(db: D1Database, f: Fetch, url: URL): Promise<Resp
   const blob = new URL('/xrpc/com.atproto.sync.getBlob', pds);
   blob.searchParams.set('did', did);
   blob.searchParams.set('cid', cid);
-  const cf: RequestInitCfProperties = { cacheTtl: CACHE_SECONDS, cacheEverything: true };
+  const original = () => f(blob.toString(), { cf: { cacheTtl: CACHE_SECONDS, cacheEverything: true } });
+
   if (size === 'thumbnail') {
-    cf.image = { width: THUMB_SIDE, height: THUMB_SIDE, fit: 'scale-down', format: 'webp', quality: 80 };
+    const made = await f(blob.toString(), {
+      cf: { image: { width: THUMB_SIDE, height: THUMB_SIDE, fit: 'scale-down', format: 'webp', quality: 80 } },
+    });
+    // Kept only if it's really a thumbnail: with transformations off, the
+    // original may come back as it is.
+    if (made.ok && (made.headers.get('content-type') ?? '').startsWith('image/webp')) {
+      const bytes = await made.arrayBuffer();
+      await photos.put(thumbKey(cid), bytes, { httpMetadata: { contentType: 'image/webp' } });
+      return new Response(bytes, { headers: headers('image/webp', CACHE_SECONDS, 'transformed') });
+    }
+    // No thumbnail (past the allowance, or no transformations): the photo
+    // itself, for now.
+    const up = await original();
+    const type = up.headers.get('content-type') ?? '';
+    if (!up.ok) throw new PhotoError(502, 'UpstreamFailure', `The PDS answered ${up.status}`);
+    if (!IMAGE.test(type)) throw new PhotoError(502, 'UpstreamFailure', 'Not an image');
+    return new Response(up.body, { headers: headers(type, FALLBACK_SECONDS, 'original') });
   }
-  const up = await f(blob.toString(), { cf });
+
+  const up = await original();
   const type = up.headers.get('content-type') ?? '';
   if (!up.ok) throw new PhotoError(502, 'UpstreamFailure', `The PDS answered ${up.status}`);
   // Served from the indexer's own origin: never anything but an image.
-  if (!/^image\/(jpeg|png|webp|avif|gif)\b/.test(type)) throw new PhotoError(502, 'UpstreamFailure', 'Not an image');
-  return new Response(up.body, {
-    headers: {
-      'content-type': type,
-      'cache-control': `public, max-age=${CACHE_SECONDS}`,
-      'x-content-type-options': 'nosniff',
-      'content-security-policy': "default-src 'none'; sandbox",
-    },
-  });
+  if (!IMAGE.test(type)) throw new PhotoError(502, 'UpstreamFailure', 'Not an image');
+  return new Response(up.body, { headers: headers(type, CACHE_SECONDS, 'original') });
 }
