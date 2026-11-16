@@ -142,7 +142,10 @@ for (const d of docs) {
       const t = typeName(d.id, name);
       queries.push([t, d.id]);
       out += `// ${d.id} (query)\nexport interface ${t}Params ${objectType(def.parameters ?? {}, d.id)}\n`;
-      out += `export interface ${t}Output ${objectType(def.output.schema, d.id)}\n\n`;
+      // A query whose output is bytes (getPhoto's image) has no schema, so no
+      // Output type.
+      if (def.output?.schema) out += `export interface ${t}Output ${objectType(def.output.schema, d.id)}\n`;
+      out += '\n';
     }
   }
 }

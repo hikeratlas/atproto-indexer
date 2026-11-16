@@ -15,9 +15,15 @@ describe('libraries in workerd', () => {
     const lex = new Lexicons(LEXICONS);
     const review = jsonToLex({
       $type: NSID.Review, text: 'Great views', createdAt: '2026-11-14T12:00:00.000Z',
-      photos: [{ image: { $type: 'blob', ref: { $link: 'bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy' }, mimeType: 'image/jpeg', size: 1000 } }],
+      photos: [{ image: { $type: 'blob', ref: { $link: 'bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy' }, mimeType: 'image/jpeg', size: 1000 }, aspectRatio: { width: 4, height: 3 } }],
     });
     expect(() => lex.assertValidRecord(NSID.Review, review)).not.toThrow();
+    // A photo's aspectRatio is required (atproto-lexicon#9, website#177).
+    const noRatio = jsonToLex({
+      $type: NSID.Review, text: 'Great views', createdAt: '2026-11-14T12:00:00.000Z',
+      photos: [{ image: { $type: 'blob', ref: { $link: 'bafkreibme22gw2h7y2h7tg2fhqotaqjucnbc24deqo72b6mkl2egezxhvy' }, mimeType: 'image/jpeg', size: 1000 } }],
+    });
+    expect(() => lex.assertValidRecord(NSID.Review, noRatio)).toThrow(/aspectRatio/);
     expect(() => lex.assertValidRecord(NSID.Review, { $type: NSID.Review, createdAt: 'x' })).toThrow();
   });
 
